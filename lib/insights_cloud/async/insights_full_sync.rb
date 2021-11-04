@@ -6,24 +6,25 @@ module InsightsCloud
       include ::ForemanRhCloud::CloudAuth
 
       def plan
-        unless cloud_auth_available?
-          logger.debug('Cloud authentication is not available, skipping insights sync')
-          return
-        end
-
         sequence do
-          # This can be turned off when we enable automatic status syncs
-          # This step will query cloud inventory to retrieve inventory uuids for each host
-          plan_hosts_sync
-          plan_self
           concurrence do
-            plan_rules_sync
-            plan_notifications
+            Organization.unscoped.each do |organization|
+              next unless cloud_auth_available?(organization)
+              sequence do
+                # This can be turned off when we enable automatic status syncs
+                # This step will query cloud inventory to retrieve inventory uuids for each host
+                plan_hosts_sync(organization.id)
+                plan_self(organization_id: organization.id)
+                plan_rules_sync(organization.id)
+              end
+            end
           end
+          plan_notifications
         end
       end
 
       def run
+        auth_organization = Organization.find(input[:organization_id])
         perform_hits_sync
       end
 
@@ -42,12 +43,12 @@ module InsightsCloud
 
       private
 
-      def plan_hosts_sync
-        plan_action InventorySync::Async::InventoryHostsSync
+      def plan_hosts_sync(organization_id)
+        plan_action InventorySync::Async::InventoryHostsSync, organization_id
       end
 
-      def plan_rules_sync
-        plan_action InsightsRulesSync
+      def plan_rules_sync(organization_id)
+        plan_action InsightsRulesSync, organization_id
       end
 
       def plan_notifications

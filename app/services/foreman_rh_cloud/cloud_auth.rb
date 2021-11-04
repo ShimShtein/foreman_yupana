@@ -4,41 +4,34 @@ module ForemanRhCloud
 
     include CloudRequest
 
-    def cloud_auth_available?
-      Setting[:rh_cloud_token].present?
+    # organization to authorize requests against
+    attr_writer :auth_organization
+
+    def cloud_auth_available?(organization)
+      organization.owner_details.dig('upstreamConsumer', 'idCert').present?
     end
 
     def rh_credentials
-      @rh_credentials ||= query_refresh_token
-    end
-
-    def query_refresh_token
-      token_response = RestClient::Request.execute(
-        method: :post,
-        url: ForemanRhCloud.authentication_url,
-        verify_ssl: ForemanRhCloud.verify_ssl_method,
-        proxy: ForemanRhCloud.transformed_http_proxy_string(logger: logger),
-        payload: {
-          grant_type: 'refresh_token',
-          client_id: 'rhsm-api',
-          refresh_token: Setting[:rh_cloud_token],
+      @rh_credentials ||= begin
+        candlepin_id_certificate = auth_organization.owner_details['upstreamConsumer']['idCert']
+        {
+          cert: candlepin_id_certificate['cert'],
+          key: candlepin_id_certificate['key'],
         }
-      )
-
-      JSON.parse(token_response)['access_token']
-    rescue RestClient::ExceptionWithResponse => e
-      Foreman::Logging.exception('Unable to authenticate using rh_cloud_token setting', e)
-      raise ::Foreman::WrappedException.new(e, N_('Unable to authenticate using rh_cloud_token setting'))
+      end
     end
 
     def execute_cloud_request(params)
       final_params = {
-        headers: {
-          Authorization: "Bearer #{rh_credentials}",
-        },
+        ssl_client_cert: OpenSSL::X509::Certificate.new(rh_credentials[:cert]),
+        ssl_client_key: OpenSSL::PKey::RSA.new(rh_credentials[:key]),
       }.deep_merge(params)
 
       super(final_params)
+    end
+
+    def auth_organization
+      @auth_organization || Organization.current
     end
   end
 end

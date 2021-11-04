@@ -9,7 +9,7 @@ module ForemanRhCloud
   end
 
   def self.cert_base_url
-    @cert_base_url ||= ENV['SATELLITE_CERT_RH_CLOUD_URL'] || 'https://cert.cloud.redhat.com'
+    @cert_base_url ||= ENV['SATELLITE_CERT_RH_CLOUD_URL'] || 'https://cert.console.redhat.com'
   end
 
   def self.legacy_insights_url

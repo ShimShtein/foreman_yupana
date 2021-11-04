@@ -7,18 +7,15 @@ module InsightsCloud
 
       RULE_ID_REGEX = /[^:]*:(?<id>.*)/
 
-      def plan
-        unless cloud_auth_available?
-          logger.debug('Cloud authentication is not available, skipping resolutions sync')
-          return
-        end
-
-        plan_self
+      def plan(organization_id)
+        plan_self(organization_id: organization_id)
       end
 
       def run
+        auth_organization = Organization.find(input[:organization_id])
+        return unless cloud_auth_available?(auth_organization)
+
         InsightsResolution.transaction do
-          InsightsResolution.delete_all
           rule_ids = relevant_rules
           api_response = query_insights_resolutions(rule_ids) unless rule_ids.empty?
           write_resolutions(api_response) if api_response
@@ -65,7 +62,7 @@ module InsightsCloud
           rule_details['resolutions'].map { |resolution| to_resolution_hash(to_rule_id(rule_id), resolution) }
         end.flatten
 
-        InsightsResolution.create(all_resolutions)
+        InsightsResolution.upsert_all(all_resolutions, unique_by: :rule_id)
       end
 
       def to_rule_id(resolution_rule_id)

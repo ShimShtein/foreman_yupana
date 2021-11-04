@@ -4,18 +4,17 @@ module InventorySync
       set_callback :iteration, :around, :setup_facet_transaction
       set_callback :step, :around, :create_facets
 
-      def plan
-        unless cloud_auth_available?
+      def plan(organization_id)
+        plan_self(organization_id: organization_id)
+      end
+
+      def setup_facet_transaction
+        auth_organization = Organization.find(input[:organization_id])
+        unless cloud_auth_available?(auth_organization)
           logger.debug('Cloud authentication is not available, skipping inventory hosts sync')
           return
         end
 
-        # by default the tasks will be executed concurrently
-        plan_self
-        plan_self_host_sync
-      end
-
-      def setup_facet_transaction
         InsightsFacet.transaction do
           yield
         end
@@ -47,10 +46,6 @@ module InventorySync
         existing_facets.select { |host_id, uuid| uuid.empty? }.each do |host_id, _uuid|
           InsightsFacet.where(host_id: host_id).update_all(uuid: uuids_hash[host_id])
         end
-      end
-
-      def plan_self_host_sync
-        plan_action InventorySync::Async::InventorySelfHostSync
       end
     end
   end

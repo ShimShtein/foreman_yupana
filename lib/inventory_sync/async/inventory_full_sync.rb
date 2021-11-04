@@ -5,7 +5,7 @@ module InventorySync
       set_callback :step, :around, :update_statuses_batch
 
       def plan(organization)
-        unless cloud_auth_available?
+        unless cloud_auth_available?(organization)
           logger.debug('Cloud authentication is not available, skipping inventory hosts sync')
           return
         end
@@ -14,6 +14,8 @@ module InventorySync
       end
 
       def setup_statuses
+        auth_organization = Organization.find(input[:organization_id])
+
         @subscribed_hosts_ids = Set.new(
           ForemanInventoryUpload::Generators::Queries.for_slice(
             Host.unscoped.where(organization: input[:organization_id])

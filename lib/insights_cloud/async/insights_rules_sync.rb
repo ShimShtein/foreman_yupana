@@ -5,28 +5,29 @@ module InsightsCloud
     class InsightsRulesSync < ::Actions::EntryAction
       include ::ForemanRhCloud::CloudAuth
 
-      def plan
-        unless cloud_auth_available?
-          logger.debug('Cloud authentication is not available, skipping rules sync')
-          return
-        end
+      def plan(organization_id)
 
         # since the tasks are not connected, we need to force sequence execution here
         # to make sure we don't run resolutions until we synced all our rules
         sequence do
-          plan_self
-          plan_resolutions
+          plan_self(organization_id: organization_id)
+          plan_resolutions(organization_id)
         end
       end
 
-      def plan_resolutions
-        plan_action InsightsResolutionsSync
+      def plan_resolutions(organization_id)
+        plan_action InsightsResolutionsSync, organization_id
       end
 
       def run
+        auth_organization = Organization.find(input[:organization_id])
+        unless cloud_auth_available?(auth_organization)
+          logger.debug('Cloud authentication is not available, skipping rules sync')
+          return
+        end
+
         offset = 0
         InsightsRule.transaction do
-          InsightsRule.delete_all
           loop do
             api_response = query_insights_rules(offset)
             results = RulesResult.new(api_response)
@@ -57,7 +58,7 @@ module InsightsCloud
       def write_rules_page(rules)
         rules_attributes = rules.map { |rule| to_rule_hash(rule) }
 
-        InsightsRule.create(rules_attributes)
+        InsightsRule.upsert_all(rules_attributes, unique_by: :rule_id)
       end
 
       def to_rule_hash(rule_hash)
